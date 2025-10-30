@@ -1,7 +1,18 @@
+# =========================================
+# Fome Zero Data — dependências principais
+# =========================================
+
+# --- Núcleo do app ---
 streamlit==1.39.0
 pandas==2.2.2
+numpy==1.26.4
+
+# --- Visualização e mapas ---
 plotly==5.24.1
 folium==0.17.0
 streamlit-folium==0.20.0
+
+# --- Utilidades e suporte ---
 Pillow==10.4.0
-numpy==1.26.4
+inflection==0.5.1
+typing_extensions==4.12.2

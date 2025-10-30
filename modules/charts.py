@@ -6,7 +6,7 @@ from typing import Optional
 import streamlit as st
 import folium
 from folium.plugins import MarkerCluster
-from streamlit_folium import folium_static
+from streamlit_folium import st_folium
 
 def agrupamento(df, *, agrupador: str, alvo: str, operacao: str, linhas=None):
     """
@@ -463,7 +463,7 @@ def grafico_valor_restaurantes_maior(df):
     .sort_values(['media_valor', 'id_mais_antigo'], ascending=[False, True]))
     df2.columns = ['Nome do Restaurante','Valor médio para 2 p.($)','ID do Restaurante','País']
     df2.reset_index()
-    fig = px.bar(df2.head(15), x='Nome do Restaurante',y='Valor médio para 2 p.($)',text='Valor médio para 2 p.($)',title='Os 15 menores preços para 2 pessoas por restaurante',color='País')
+    fig = px.bar(df2.head(15), x='Nome do Restaurante',y='Valor médio para 2 p.($)',text='Valor médio para 2 p.($)',title='Os 15 maiores preços para 2 pessoas por restaurante',color='País')
     fig.update_xaxes(categoryorder='total descending')
     fig.update_traces(textposition='outside')
     return fig
@@ -505,81 +505,102 @@ def grafico_notas_culinarias(df):
     fig.update_traces(textposition='outside')
     return fig
 
-import pandas as pd
-import folium
-from folium.plugins import MarkerCluster
-from streamlit_folium import folium_static
-import streamlit as st
-
 def restaurants_map(
     df,
     *,
-    color_col='color',        # coluna que define a cor dos pinos
-    cluster=True,                    # ativa/desativa o agrupamento por zoom
     lat_col='latitude',
     lon_col='longitude',
-    city_col='city',
-    country_col='country_name',
+    name_col='restaurant_name',
     rating_col='aggregate_rating',
     cuisine_col='cuisines',
-    name_col='restaurant_name',
+    city_col='city',
+    country_col='country_name',
+    color_col='cor',          # <- cor já presente no df
+    cluster=True,             # agrupa ao afastar o zoom
     zoom_start=2,
-    show_legend=True                 # mostra uma tabela simples com o mapeamento cor→categoria (no Streamlit)
+    max_points=5000,          # limite p/ performance na nuvem
+    use_circle=True           # CircleMarker é mais leve
 ):
-    # seleciona colunas e remove coordenadas nulas
-    cols = [c for c in [lat_col, lon_col, city_col, country_col, rating_col, cuisine_col, name_col, color_col] if c in df.columns]
-    data = df.loc[:, cols].dropna(subset=[lat_col, lon_col]).copy()
+    """
+    Desenha o mapa de restaurantes com marcadores coloridos via df['cor'].
+    Limita a amostra a max_points para evitar travar (especialmente no Streamlit Cloud).
+    """
 
-    # normaliza nota (se vier como string)
-    if rating_col in data.columns:
-        data[rating_col] = pd.to_numeric(data[rating_col], errors='coerce')
+    # --- Seleção mínima de colunas e tipagem ---
+    cols = [c for c in [lat_col, lon_col, name_col, rating_col, cuisine_col, city_col, country_col, color_col] if c in df.columns]
+    data = df.loc[:, cols].copy()
+
+    # garante numéricos
+    for c in [lat_col, lon_col, rating_col]:
+        if c in data.columns:
+            data[c] = pd.to_numeric(data[c], errors='coerce')
+
+    # remove coordenadas inválidas
+    data = data.dropna(subset=[lat_col, lon_col])
+    if data.empty:
+        return st_folium(folium.Map(location=[0, 0], zoom_start=zoom_start), width=1024, height=600)
+
+    # --- downsample leve para não travar (se exceder max_points) ---
+    if isinstance(max_points, int) and max_points > 0 and len(data) > max_points:
+        # amostragem estratificada simples por cor (mantém proporção das cores)
+        data = (
+            data.groupby(color_col, group_keys=False)
+                .apply(lambda g: g.sample(frac=min(1.0, max_points / len(data)), random_state=42))
+        )
 
     # centro do mapa
-    lat_center = data[lat_col].mean()
-    lon_center = data[lon_col].mean()
-    m = folium.Map(location=[lat_center, lon_center], zoom_start=zoom_start)
+    lat_center = float(data[lat_col].mean())
+    lon_center = float(data[lon_col].mean())
+    m = folium.Map(location=[lat_center, lon_center],zoom_start=zoom_start,tiles="CartoDB positron")
 
-    # paleta de cores suportadas pelo folium.Icon
-    folium_colors = ['Darkgreen', 'Green', 'Lightgreen', 'Orange', 'Red', 'Darkred']
+    # normalização básica de nomes de cores aceitos pelo Folium
+    allowed = {
+        'red','blue','green','purple','orange','darkred','lightred','beige',
+        'darkblue','darkgreen','cadetblue','darkpurple','pink','lightblue',
+        'lightgreen','gray','black','lightgray'
+    }
+    pt_alias = {'azul':'blue','verde':'green','vermelho':'red','laranja':'orange','rosa':'pink','cinza':'gray'}
+    def norm_color(v):
+        c = str(v).strip().lower()
+        c = pt_alias.get(c, c)
+        return c if c in allowed else 'blue'
 
-    # mapeia categoria→cor
-    cats = data[color_col].dropna().astype(str).unique().tolist()
-    color_map = {c: folium_colors[i % len(folium_colors)] for i, c in enumerate(cats)}
-
-    # marcador simples ou cluster
     container = MarkerCluster().add_to(m) if cluster else m
 
-    # adiciona pinos
-    for _, r in data.iterrows():
-        cat_val = str(r.get(color_col, ''))
-        pin_color = color_map.get(cat_val, 'gray')
-
-        nome  = str(r.get(name_col, '—'))
-        nota  = r.get(rating_col, None)
+    # iteração leve (CircleMarker é mais rápido que Icon)
+    for r in data.itertuples(index=False):
+        pin_color = norm_color(getattr(r, color_col, 'blue'))
+        nome  = str(getattr(r, name_col, '—'))
+        culin = str(getattr(r, cuisine_col, '—')) if cuisine_col in data.columns else '—'
+        cidade = str(getattr(r, city_col, '—')) if city_col in data.columns else '—'
+        pais   = str(getattr(r, country_col, '—')) if country_col in data.columns else '—'
+        nota   = getattr(r, rating_col, None) if rating_col in data.columns else None
         nota_txt = f"{float(nota):.1f}/5.0" if pd.notna(nota) else "—/5.0"
-        culin = str(r.get(cuisine_col, '—'))
-        cidade = str(r.get(city_col, '—'))
-        pais   = str(r.get(country_col, '—'))
 
-        # popup e tooltip em TEXTO simples
         popup_text = f"{nome}\n⭐ {nota_txt}\n🍽 {culin}\n📍 {cidade}, {pais}"
         tooltip_text = f"{nome} — {nota_txt}"
 
-        folium.Marker(
-            location=[r[lat_col], r[lon_col]],
-            popup=folium.Popup(popup_text, max_width=280),
-            tooltip=tooltip_text,
-            icon=folium.Icon(color=pin_color, icon='info-sign')  # ícone padrão (sem HTML)
-        ).add_to(container)
+        lat = float(getattr(r, lat_col))
+        lon = float(getattr(r, lon_col))
 
-    # renderiza o mapa
-    folium_static(m, width=1024, height=600)
+        if use_circle:
+            folium.CircleMarker(
+                location=[lat, lon],
+                radius=4,
+                popup=popup_text,
+                tooltip=tooltip_text,
+                color=pin_color,
+                fill=True,
+                fill_color=pin_color,
+                fill_opacity=0.7
+            ).add_to(container)
+        else:
+            folium.Marker(
+                location=[lat, lon],
+                popup=popup_text,
+                tooltip=tooltip_text,
+                icon=folium.Icon(color=pin_color, icon='info-sign')
+            ).add_to(container)
 
-    # legenda simples no Streamlit (sem HTML): tabela Categoria × Cor
-    if show_legend:
-        legend_df = pd.DataFrame(
-            [(k, v) for k, v in color_map.items()],
-            columns=[color_col, 'cor_folium']
-        )
-        st.caption("Mapa de cores dos marcadores:")
-        st.dataframe(legend_df, use_container_width=True)
+    # render robusto
+    return st_folium(m, width=1024, height=600)

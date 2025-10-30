@@ -52,6 +52,22 @@ st.sidebar.image(image, width=120)
 st.sidebar.markdown("### Fome Zero")
 st.sidebar.markdown("## A melhor maneira de você matar a sua fome")
 st.sidebar.markdown("---")
+country_options = st.sidebar.multiselect(
+    'Quais os países que deseja selecionar?',
+    ['Philippines', 'Brazil', 'Australia', 'USA',
+       'Canada', 'Singapure', 'United Arab Emirates', 'India',
+       'Indonesia', 'New Zeland', 'England', 'Qatar', 'South Africa',
+       'Sri Lanka', 'Turkey'],
+    default = ['Philippines', 'Brazil', 'Australia', 'USA',
+       'Canada', 'Singapure',
+       'Indonesia', 'New Zeland', 'England', 'Qatar', 'South Africa', 'Turkey'])
+
+st.sidebar.markdown("""---""")
+st.sidebar.markdown('Powered by Júlio Takeichi')
+
+#Filtro de país
+linhas_selecionadas = df1['country_name'].isin(country_options)
+df1= df1.loc[linhas_selecionadas,:]
 
 #=======================================================================================
 # Layout no Streamlit
@@ -78,17 +94,8 @@ with st.container():
 with st.container():
     st.subheader("🌎 Mapa — Restaurantes")
     cluster_on = st.checkbox("Agrupar marcadores (MarkerCluster)", value=True)
-    color_by = st.selectbox("Colorir pinos por", ["country_name", "cuisines"], index=0)
-    restaurants_map( df1,
-                color_col='color',
-                cluster=cluster_on,
-                lat_col='latitude', lon_col='longitude',
-                city_col='city', country_col='country_name',
-                rating_col='aggregate_rating', cuisine_col='cuisines',
-                name_col='restaurant_name',
-                zoom_start=2,
-                show_legend=True)
-                
+    restaurants_map(df1, color_col='color', cluster=cluster_on, max_points=4000, use_circle=True, zoom_start=2)
+    
 with st.container():    
     st.markdown(dedent("""
     ### Como usar este Dashboard
