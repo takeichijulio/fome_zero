@@ -98,7 +98,7 @@ O design prioriza **clareza, leveza e interatividade**, permitindo ao CEO explor
 
 ## 👨🏻‍💻 8. Créditos
 
-📊 **Desenvolvido por:** [Julio Takeichi](https://github.com/juliotakeichi)  
+📊 **Desenvolvido por:** [Julio Takeichi](https://github.com/takeichijulio)  
 📚 **Baseado no desafio:** *Fome Zero - Comunidade DS*  
 🧠 **Foco:** *Análise de Dados, Visualização Interativa e Engenharia de Insights*  
 🚀 **Tecnologias:** Streamlit, Pandas, Plotly, Folium, Inflection
